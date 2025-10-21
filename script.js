@@ -1,49 +1,37 @@
-// Aguarda o documento HTML carregar antes de executar o script
 document.addEventListener('DOMContentLoaded', (event) => {
 
     const resultDiv = document.getElementById('qr-result');
     const ENDPOINT_URL = 'https://sua-api.com/endpoint/receber-qr';
 
-    // --- NOVO: Inicializa o Contexto de Áudio ---
-    // Fazemos isso uma vez. 
-    // O '|| webkitAudioContext' é para compatibilidade com navegadores mais antigos (Safari).
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // --- Flag de controle para o cooldown ---
+    let isScanning = true;
+    const COOLDOWN_MS = 2500; // 2.5 segundos de espera
 
-    /**
-     * --- NOVO: Função para tocar sons ---
-     * Gera um som de "beep" ou "erro"
-     * @param {'success' | 'error'} type 
-     */
+    // --- Contexto de Áudio (igual) ---
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     function playSound(type = 'success') {
+        // ... (código da função playSound igual ao anterior) ...
         try {
-            // Garante que o áudio possa tocar (necessário em alguns navegadores
-            // que bloqueiam o áudio antes da primeira interação do usuário)
             if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
-
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
-
             oscillator.connect(gainNode);
             gainNode.connect(audioContext.destination);
-
-            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime); // Volume
-
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
             if (type === 'success') {
-                // Beep agudo e curto para sucesso
-                oscillator.type = 'sine'; // Tom limpo
-                oscillator.frequency.setValueAtTime(900, audioContext.currentTime); // Frequência (agudo)
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(900, audioContext.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
                 oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.1); // Duração de 0.1s
+                oscillator.stop(audioContext.currentTime + 0.1);
             } else if (type === 'error') {
-                // Beep grave e mais longo para erro
-                oscillator.type = 'square'; // Tom mais "digital/áspero"
-                oscillator.frequency.setValueAtTime(300, audioContext.currentTime); // Frequência (grave)
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(300, audioContext.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
                 oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.3); // Duração de 0.3s
+                oscillator.stop(audioContext.currentTime + 0.3);
             }
         } catch (e) {
             console.error("Erro ao tocar áudio:", e);
@@ -55,16 +43,31 @@ document.addEventListener('DOMContentLoaded', (event) => {
      * Função chamada quando o QR Code é lido com sucesso.
      */
     async function onScanSuccess(decodedText, decodedResult) {
-        // --- ADICIONADO ---
-        playSound('success'); // Toca o som de sucesso!
+        
+        // Se não estivermos em cooldown, processa a leitura
+        if (isScanning) {
+            
+            // 1. Trava o scanner (inicia o cooldown)
+            isScanning = false;
+            
+            // 2. Toca o som e mostra o resultado
+            playSound('success');
+            resultDiv.innerHTML = `Detectado: ${decodedText}`;
+            resultDiv.style.display = 'block';
 
-        resultDiv.textContent = `Código detectado: ${decodedText}`;
+            // 3. NÃO PARAMOS O SCANNER (removemos o .clear())
+            // Isso mantém a câmera ativa.
+            
+            // 4. Envia os dados
+            await sendDataToEndpoint(decodedText);
 
-        html5QrcodeScanner.clear().catch(error => {
-            console.error("Falha ao parar o scanner.", error);
-        });
-
-        await sendDataToEndpoint(decodedText);
+            // 5. Após o cooldown, reativa o scanner e esconde a msg
+            setTimeout(() => {
+                isScanning = true;
+                resultDiv.style.display = 'none';
+            }, COOLDOWN_MS);
+        }
+        // Se 'isScanning' for false, a leitura é ignorada
     }
 
     /**
@@ -72,8 +75,9 @@ document.addEventListener('DOMContentLoaded', (event) => {
      */
     async function sendDataToEndpoint(data) {
         try {
-            resultDiv.textContent = `Enviando dados: ${data}...`;
-
+            // Não vamos mais mostrar "enviando...",
+            // o "Detectado:" já está na tela.
+            
             const response = await fetch(ENDPOINT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -81,63 +85,54 @@ document.addEventListener('DOMContentLoaded', (event) => {
             });
 
             if (response.ok) {
-                resultDiv.textContent = `Sucesso! Dados enviados: ${data}`;
+                // Atualiza o toast para "Enviado!"
+                resultDiv.innerHTML = "Enviado com sucesso!";
                 console.log('Dados enviados com sucesso:', await response.json());
             } else {
-                // --- ADICIONADO ---
-                playSound('error'); // Toca o som de erro!
-                resultDiv.textContent = `Erro ${response.status} ao enviar os dados.`;
+                playSound('error');
+                resultDiv.innerHTML = `Erro ${response.status} ao enviar.`;
                 console.error('Falha no envio:', response.statusText);
             }
 
         } catch (error) {
-            // --- ADICIONADO ---
-            playSound('error'); // Toca o som de erro!
-            resultDiv.textContent = 'Erro de rede ao tentar enviar.';
+            playSound('error');
+            resultDiv.innerHTML = 'Erro de rede. Verifique a conexão.';
             console.error('Erro na requisição fetch:', error);
         }
     }
 
-    /**
-     * Função chamada em caso de falha (opcional, útil para depuração).
-     */
     function onScanFailure(error) {
-        // Você poderia adicionar um som de "não encontrado" aqui,
-        // mas seria muito barulhento, pois é chamado constantemente.
-        // playSound('error'); // <-- NÃO RECOMENDADO AQUI
+        // Ignora (é chamado o tempo todo quando não acha um código)
     }
 
-    // Lista dos formatos que queremos suportar
+    // Lista dos formatos (igual)
     const formatosSuportados = [
         Html5QrcodeSupportedFormats.QR_CODE,
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.CODE_128,
         Html5QrcodeSupportedFormats.UPC_A
-        // ... outros formatos ...
     ];
 
-    // Cria a instância do scanner
+    // --- Configuração Final do Scanner ---
     let html5QrcodeScanner = new Html5QrcodeScanner(
         "qr-reader",
         {
             fps: 10,
             
-            // 3. CAMPO DE LEITURA MAIOR
-            // Aumentamos de 250x250 para 350x350
-            // Ajuste este valor como preferir.
-            qrbox: { width: 400, height: 400 },
-
-            // 2. USAR A CÂMERA TRASEIRA
-            // Pede ao navegador a câmera "do ambiente" (traseira)
+            // Esta é a "marca" (a caixa de leitura)
+            qrbox: { width: 280, height: 280 },
+            
+            // PEDE A CÂMERA TRASEIRA
             facingMode: "environment",
             
-            formatsToSupport: formatosSuportados
+            formatsToSupport: formatosSuportados,
+            
+            // Opcional: Desativa os botões "Mudar Câmera"
+            // (pode ser útil se você SÓ quer a traseira)
+            // showDefaultUI: false 
         },
         /* verbose= */ false
     );
-    
-    // --- FIM DAS MODIFICAÇÕES ---
-
 
     // Inicia o scanner
     html5QrcodeScanner.render(onScanSuccess, onScanFailure);
