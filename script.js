@@ -112,6 +112,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
         Html5QrcodeSupportedFormats.QR_CODE,
         Html5QrcodeSupportedFormats.EAN_13,
         Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.UPC_A
         // ... outros formatos ...
     ];
 
@@ -120,11 +121,23 @@ document.addEventListener('DOMContentLoaded', (event) => {
         "qr-reader",
         {
             fps: 10,
-            qrbox: { width: 250, height: 250 },
+            
+            // 3. CAMPO DE LEITURA MAIOR
+            // Aumentamos de 250x250 para 350x350
+            // Ajuste este valor como preferir.
+            qrbox: { width: 350, height: 350 },
+
+            // 2. USAR A CÂMERA TRASEIRA
+            // Pede ao navegador a câmera "do ambiente" (traseira)
+            facingMode: "environment",
+            
             formatsToSupport: formatosSuportados
         },
         /* verbose= */ false
     );
+    
+    // --- FIM DAS MODIFICAÇÕES ---
+
 
     // Inicia o scanner
     html5QrcodeScanner.render(onScanSuccess, onScanFailure);
