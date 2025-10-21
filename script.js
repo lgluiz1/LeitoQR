@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', (event) => {
             // 3. CAMPO DE LEITURA MAIOR
             // Aumentamos de 250x250 para 350x350
             // Ajuste este valor como preferir.
-            qrbox: { width: 350, height: 350 },
+            qrbox: { width: 400, height: 400 },
 
             // 2. USAR A CÂMERA TRASEIRA
             // Pede ao navegador a câmera "do ambiente" (traseira)
